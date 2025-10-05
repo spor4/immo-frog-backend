@@ -1,0 +1,272 @@
+{
+  "type": "object",
+  "required": [
+    "additional_metrics",
+    "financial",
+    "project_details",
+    "property_identity",
+    "property_metrics",
+    "unit_counts",
+    "usage_details"
+  ],
+  "properties": {
+    "additional_metrics": {
+      "type": "object",
+      "properties": {
+        "average_apartment_size_sqm": {
+          "type": ["integer", "null"],
+          "minimum": 0
+        },
+        "average_residential_rent_eur_sqm_month": {
+          "type": ["number", "null"]
+        },
+        "elevator": {
+          "type": ["boolean", "null"]
+        },
+        "energy_efficiency_class": {
+          "type": ["string", "null"]
+        },
+        "heating_type": {
+          "type": ["string", "null"]
+        },
+        "market_rent_eur_sqm_month": {
+          "type": ["number", "null"]
+        },
+        "vacancy_rate_percent": {
+          "type": ["number", "null"]
+        }
+      },
+      "additionalProperties": false
+    },
+    "financial": {
+      "type": "object",
+      "required": [
+        "breakdown_by_use",
+        "total_rental_income_annual_eur"
+      ],
+      "properties": {
+        "breakdown_by_use": {
+          "type": "object",
+          "properties": {
+            "commercial": {
+              "type": ["integer", "null"],
+              "minimum": 0
+            },
+            "gastronomy": {
+              "type": ["integer", "null"],
+              "minimum": 0
+            },
+            "office": {
+              "type": ["integer", "null"],
+              "minimum": 0
+            },
+            "parking": {
+              "type": ["integer", "null"],
+              "minimum": 0
+            },
+            "residential": {
+              "type": ["integer", "null"],
+              "minimum": 0
+            },
+            "retail": {
+              "type": ["integer", "null"],
+              "minimum": 0
+            },
+            "storage": {
+              "type": ["integer", "null"],
+              "minimum": 0
+            }
+          },
+          "additionalProperties": false
+        },
+        "market_rental_income_annual_eur": {
+          "type": ["integer", "null"],
+          "minimum": 0
+        },
+        "potential_rental_income_annual_eur": {
+          "type": ["integer", "null"],
+          "minimum": 0
+        },
+        "total_rental_income_annual_eur": {
+          "type": "integer",
+          "minimum": 0
+        }
+      },
+      "additionalProperties": false
+    },
+    "project_details": {
+      "type": "object",
+      "required": [
+        "completion_year",
+        "original_year_built",
+        "project_type"
+      ],
+      "properties": {
+        "completion_year": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "modernization_years": {
+          "type": ["string", "null"]
+        },
+        "original_year_built": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "project_type": {
+          "type": "string"
+        }
+      },
+      "additionalProperties": false
+    },
+    "property_identity": {
+      "type": "object",
+      "required": [
+        "city",
+        "country",
+        "name_id",
+        "postal_code",
+        "streets"
+      ],
+      "properties": {
+        "city": {
+          "type": "string"
+        },
+        "country": {
+          "type": "string"
+        },
+        "name_id": {
+          "type": "string"
+        },
+        "postal_code": {
+          "type": "string"
+        },
+        "streets": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      },
+      "additionalProperties": false
+    },
+    "property_metrics": {
+      "type": "object",
+      "required": [
+        "breakdown_by_use",
+        "land_area_sqm",
+        "total_usable_area_sqm"
+      ],
+      "properties": {
+        "breakdown_by_use": {
+          "type": "object",
+          "properties": {
+            "gastronomy_sqm": {
+              "type": ["integer", "null"],
+              "minimum": 0
+            },
+            "office_sqm": {
+              "type": ["integer", "null"],
+              "minimum": 0
+            },
+            "other_sqm": {
+              "type": ["integer", "null"],
+              "minimum": 0
+            },
+            "parking_sqm": {
+              "type": ["integer", "null"],
+              "minimum": 0
+            },
+            "residential_sqm": {
+              "type": ["integer", "null"],
+              "minimum": 0
+            },
+            "retail_sqm": {
+              "type": ["integer", "null"],
+              "minimum": 0
+            }
+          },
+          "additionalProperties": false
+        },
+        "land_area_sqm": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "total_usable_area_sqm": {
+          "type": "integer",
+          "minimum": 0
+        }
+      },
+      "additionalProperties": false
+    },
+    "unit_counts": {
+      "type": "object",
+      "properties": {
+        "commercial_units": {
+          "type": ["integer", "null"],
+          "minimum": 0
+        },
+        "microapartments": {
+          "type": ["integer", "null"],
+          "minimum": 0
+        },
+        "parking_spaces": {
+          "type": ["integer", "null"],
+          "minimum": 0
+        },
+        "residential_units": {
+          "type": ["integer", "null"],
+          "minimum": 0
+        },
+        "storage_units": {
+          "type": ["integer", "null"],
+          "minimum": 0
+        }
+      },
+      "additionalProperties": false
+    },
+    "usage_details": {
+      "type": "object",
+      "required": [
+        "occupancy_by_use",
+        "overall_occupancy_percent",
+        "primary_usage_type",
+        "usage_mix"
+      ],
+      "properties": {
+        "occupancy_by_use": {
+          "type": "object",
+          "properties": {
+            "gastronomy": {
+              "type": ["number", "null"]
+            },
+            "office": {
+              "type": ["number", "null"]
+            },
+            "residential": {
+              "type": ["number", "null"]
+            },
+            "retail": {
+              "type": ["number", "null"]
+            }
+          },
+          "additionalProperties": false
+        },
+        "overall_occupancy_percent": {
+          "type": "number"
+        },
+        "primary_usage_type": {
+          "type": "string"
+        },
+        "usage_mix": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      },
+      "additionalProperties": false
+    }
+  },
+  "additionalProperties": false
+}

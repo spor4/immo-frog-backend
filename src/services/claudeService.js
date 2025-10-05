@@ -1,5 +1,7 @@
 const Anthropic = require('@anthropic-ai/sdk');
 const logger = require('../utils/logger');
+const complexSchema = require('../schemas/complexSchema.json');
+const portfolioSchema = require('../schemas/portfolioSchema.json');
 
 class ClaudeService {
   constructor() {
@@ -12,172 +14,140 @@ class ClaudeService {
     });
 
     this.model = process.env.CLAUDE_MODEL || 'claude-sonnet-4-5';
-    this.systemPrompt = this.getSystemPrompt();
   }
 
-  getSystemPrompt() {
-    return JSON.stringify({
-      task: "extract_real_estate_information_adaptive",
-      instruction: "Analyze the exposé and determine the appropriate extraction approach: SINGLE COMPLEX PROPERTY (one property with multiple uses/addresses) or PORTFOLIO (multiple separate properties). Extract information accordingly.",
+  getClassificationPrompt() {
+    return `You are analyzing a German real estate exposé (property listing document).
 
-      decision_criteria: {
-        treat_as_single_property_when: [
-          "Document describes one building complex with multiple addresses",
-          "Mixed-use property with integrated components",
-          "Single purchase price for entire complex",
-          "Shared infrastructure (parking, utilities)",
-          "One land plot (Grundstück) number",
-          "Described as 'Objekt' (singular) not 'Objekte' (plural)"
-        ],
-        treat_as_portfolio_when: [
-          "Multiple distinct properties at different locations",
-          "Separate building IDs or names (e.g., BV10, BV12)",
-          "Individual property metrics listed in tables",
-          "Properties can be sold separately",
-          "Different construction years per building",
-          "Separate land plots (Flurstücke) per property"
-        ]
-      },
+Your task is to determine whether this document describes:
+- SINGLE: One complex property (possibly with multiple uses, addresses, or components, but it's ONE property)
+- PORTFOLIO: Multiple separate properties that could be sold individually
 
-      extraction_modes: {
-        mode_1_single_complex: {
-          description: "For single properties with multiple uses/components",
-          output_structure: {
-            property_identity: {
-              name_id: "Property name or identifier",
-              streets: ["All street addresses if multiple"],
-              postal_code: "string",
-              city: "string",
-              country: "string"
-            },
-            property_metrics: {
-              land_area_sqm: "number",
-              total_usable_area_sqm: "number",
-              breakdown_by_use: {
-                office_sqm: "number or null",
-                retail_sqm: "number or null",
-                gastronomy_sqm: "number or null",
-                residential_sqm: "number or null",
-                parking_sqm: "number or null",
-                other_sqm: "number or null"
-              }
-            },
-            usage_details: {
-              primary_usage_type: "string",
-              usage_mix: ["array of all uses"],
-              overall_occupancy_percent: "number",
-              occupancy_by_use: {
-                office: "number or null",
-                retail: "number or null",
-                gastronomy: "number or null",
-                residential: "number or null"
-              }
-            },
-            unit_counts: {
-              residential_units: "number or null",
-              microapartments: "number or null",
-              commercial_units: "number or null",
-              parking_spaces: "number or null"
-            },
-            financial: {
-              total_rental_income_annual_eur: "number",
-              potential_rental_income_annual_eur: "number or null",
-              breakdown_by_use: {
-                office: "number or null",
-                retail: "number or null",
-                gastronomy: "number or null",
-                residential: "number or null",
-                parking: "number or null"
-              }
-            },
-            project_details: {
-              project_type: "enum",
-              original_year_built: "integer",
-              modernization_years: "string or null",
-              completion_year: "integer or null"
-            }
-          }
-        },
+Classification criteria:
 
-        mode_2_portfolio: {
-          description: "For multiple separate properties",
-          output_structure: {
-            type: "array",
-            items: {
-              name_id: "string",
-              street: "string",
-              postal_code: "string",
-              city: "string",
-              country: "string",
-              land_area_sqm: "number or null",
-              usable_area_sqm: "number or null",
-              usage_type: "string",
-              occupancy_rate_percent: "number or null",
-              rental_income_annual_eur: "number",
-              project_type: "string or null",
-              year_built: "integer or null"
-            }
-          }
-        }
-      },
+Classify as SINGLE when:
+- Document describes one building complex with multiple addresses
+- Mixed-use property with integrated components (e.g., retail + residential in same building)
+- Single purchase price for entire complex
+- Shared infrastructure (parking, utilities, management)
+- One land plot (Grundstück) number or contiguous land
+- Described as "Objekt" (singular) not "Objekte" (plural)
+- One overall property name/identifier
 
-      extraction_rules: [
-        "First determine if this is ONE property or MULTIPLE properties",
-        "For mixed-use properties, capture ALL components and uses",
-        "Look for tables showing tenant details vs. property details",
-        "Check 'IST & SOLL' sections for current vs. potential income",
-        "Extract modernization/renovation periods separately from original construction",
-        "For complex properties, provide breakdown by usage type when available",
-        "Parking counts should be extracted as units, not area",
-        "Convert all German number formats properly (. for thousands, , for decimals)"
-      ],
+Classify as PORTFOLIO when:
+- Multiple distinct properties at completely different locations
+- Separate building IDs or names that indicate independence (e.g., "Building A", "Building B")
+- Individual property metrics listed in separate tables
+- Properties that can be sold separately
+- Different construction years per building indicating separate developments
+- Separate land plots (Flurstücke) per property
+- Multiple property addresses that are geographically separate
 
-      special_handling: {
-        mixed_use_properties: [
-          "Extract total figures AND breakdowns by use",
-          "List all tenant types in usage_mix array",
-          "Calculate weighted occupancy if different uses have different rates"
-        ],
-        microapartments: [
-          "Count separately from regular apartments",
-          "Note if furnished/serviced apartments",
-          "Include operator name if managed"
-        ],
-        parking: [
-          "Extract number of spaces, not just area",
-          "Note if underground/above ground",
-          "Include rental income from parking if separate"
-        ]
-      },
+Respond with ONLY one word: either "SINGLE" or "PORTFOLIO"`;
+  }
 
-      validation_rules: [
-        "If document has one purchase price, treat as single property",
-        "Mixed-use with shared infrastructure = single property",
-        "Separate property tables with individual metrics = portfolio",
-        "Verify occupancy rates match what's shown in charts/graphs",
-        "Total income should equal sum of component incomes"
-      ]
-    });
+  getExtractionPrompt(propertyType) {
+    if (propertyType === 'SINGLE') {
+      return `You are extracting property information from a German real estate exposé.
+
+Key extraction rules:
+- Extract ALL numerical values (areas, income, occupancy rates)
+- For mixed-use properties, provide both totals AND breakdowns by use type
+- Convert German number formats: "1.234,56" becomes 1234.56
+- Look for "IST" (current) vs "SOLL" (potential) income sections
+- Extract modernization years separately from original construction year
+- Count parking as number of spaces, not area
+- Ensure all required fields are filled - if data is missing, use null for optional fields
+- Be thorough - extract every piece of information available
+
+You MUST use the extract_complex_property tool to return the data.`;
+    } else {
+      return `You are extracting property information from a German real estate exposé with multiple properties.
+
+Key extraction rules:
+- Create one array item for each distinct property
+- Extract ALL properties mentioned in the document
+- Convert German number formats: "1.234,56" becomes 1234.56
+- Each property must have at minimum: name_id, street, postal_code, city, country
+- Extract all available metrics for each property
+- If a value is not available for a property, use null
+
+You MUST use the extract_portfolio_properties tool to return the data.`;
+    }
+  }
+
+  // Convert JSON schema to Anthropic tool input schema format
+  convertToToolSchema(jsonSchema) {
+    // Anthropic tools use input_schema which is basically the same as JSON schema
+    // but we need to ensure it's properly formatted
+    return jsonSchema;
   }
 
   async extractPropertyData(pdfBase64) {
     try {
-      logger.info('Sending PDF to Claude API for analysis');
-
+      logger.info('Starting two-step extraction process');
       const startTime = Date.now();
 
-      const response = await this.client.messages.create({
+      // STEP 1: Classify the document type
+      logger.info('Step 1: Classifying document type');
+      const classificationResponse = await this.client.messages.create({
         model: this.model,
-        max_tokens: 8192,
+        max_tokens: 10,
         temperature: 0,
-        system: this.systemPrompt,
         messages: [
           {
             role: "user",
             content: [
               {
                 type: "text",
-                text: "Analyze this real estate exposé and extract property information according to the instructions. Return ONLY the JSON data, no explanations."
+                text: this.getClassificationPrompt()
+              },
+              {
+                type: "document",
+                source: {
+                  type: "base64",
+                  media_type: "application/pdf",
+                  data: pdfBase64
+                }
+              }
+            ]
+          }
+        ]
+      });
+
+      const classificationType = this.extractTextFromResponse(classificationResponse).trim();
+      logger.info(`Document classified as: ${classificationType}`);
+
+      if (classificationType !== 'SINGLE' && classificationType !== 'PORTFOLIO') {
+        throw new Error(`Invalid classification result: ${classificationType}`);
+      }
+
+      // STEP 2: Extract with the appropriate schema using TOOL CALLING
+      logger.info(`Step 2: Extracting with ${classificationType} schema using tool calling`);
+
+      const tool = classificationType === 'SINGLE' ? {
+        name: "extract_complex_property",
+        description: "Extract structured information about a single complex property from the exposé",
+        input_schema: complexSchema
+      } : {
+        name: "extract_portfolio_properties",
+        description: "Extract structured information about multiple properties from the exposé",
+        input_schema: portfolioSchema
+      };
+
+      const extractionResponse = await this.client.messages.create({
+        model: this.model,
+        max_tokens: 8192,
+        temperature: 0,
+        tools: [tool],
+        tool_choice: { type: "tool", name: tool.name },
+        messages: [
+          {
+            role: "user",
+            content: [
+              {
+                type: "text",
+                text: this.getExtractionPrompt(classificationType)
               },
               {
                 type: "document",
@@ -193,12 +163,16 @@ class ClaudeService {
       });
 
       const processingTime = Date.now() - startTime;
-      logger.info(`Claude API response received in ${processingTime}ms`);
+      logger.info(`Extraction completed in ${processingTime}ms`);
 
-      const extractedText = this.extractTextFromResponse(response);
-      const jsonData = this.parseExtractedText(extractedText);
+      // Extract the tool use result
+      const toolUse = extractionResponse.content.find(block => block.type === 'tool_use');
+      if (!toolUse || !toolUse.input) {
+        throw new Error('No tool use found in Claude response');
+      }
 
-      return jsonData;
+      logger.info('Successfully extracted structured data via tool calling');
+      return toolUse.input;
 
     } catch (error) {
       logger.error('Claude API error:', error);
@@ -250,34 +224,6 @@ class ClaudeService {
     }
 
     return textContent.text;
-  }
-
-  parseExtractedText(text) {
-    let cleanedText = text.trim();
-
-    cleanedText = cleanedText.replace(/^```json\s*/i, '');
-    cleanedText = cleanedText.replace(/\s*```$/i, '');
-    cleanedText = cleanedText.replace(/^```\s*/i, '');
-    cleanedText = cleanedText.replace(/\s*```$/i, '');
-
-    const jsonMatch = cleanedText.match(/(\{[\s\S]*\}|\[[\s\S]*\])/);
-    if (jsonMatch) {
-      cleanedText = jsonMatch[1];
-    }
-
-    try {
-      const jsonData = JSON.parse(cleanedText);
-      logger.info('Successfully parsed JSON from Claude response');
-      return jsonData;
-    } catch (parseError) {
-      logger.error('Failed to parse JSON from Claude response:', parseError);
-      logger.debug('Raw text that failed to parse:', cleanedText.substring(0, 500));
-
-      const error = new Error('Failed to parse property data from PDF. The document may not be a valid property exposé.');
-      error.source = 'claude-api';
-      error.status = 422;
-      throw error;
-    }
   }
 
   validateApiKey() {

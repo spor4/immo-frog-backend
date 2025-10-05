@@ -4,7 +4,8 @@
       "Bash(npm init:*)",
       "Bash(npm install:*)",
       "Bash(mkdir:*)",
-      "Bash(pm2:*)"
+      "Bash(pm2:*)",
+      "WebSearch"
     ],
     "deny": [],
     "ask": []

@@ -1,0 +1,56 @@
+{
+  "type": "array",
+  "items": {
+    "type": "object",
+    "required": [
+      "city",
+      "country",
+      "name_id",
+      "postal_code",
+      "street"
+    ],
+    "properties": {
+      "city": {
+        "type": "string"
+      },
+      "country": {
+        "type": "string"
+      },
+      "land_area_sqm": {
+        "type": ["integer", "null"],
+        "minimum": 0
+      },
+      "name_id": {
+        "type": "string"
+      },
+      "occupancy_rate_percent": {
+        "type": ["number", "null"]
+      },
+      "postal_code": {
+        "type": "string"
+      },
+      "project_type": {
+        "type": ["string", "null"]
+      },
+      "rental_income_annual_eur": {
+        "type": ["integer", "null"],
+        "minimum": 0
+      },
+      "street": {
+        "type": "string"
+      },
+      "usable_area_sqm": {
+        "type": ["integer", "null"],
+        "minimum": 0
+      },
+      "usage_type": {
+        "type": ["string", "null"]
+      },
+      "year_built": {
+        "type": ["integer", "null"],
+        "minimum": 0
+      }
+    },
+    "additionalProperties": false
+  }
+}

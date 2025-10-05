@@ -5,10 +5,11 @@ A Node.js/Express server that processes real estate PDF documents (property expo
 ## Features
 
 - 📄 **PDF Processing**: Upload and analyze real estate property exposés up to 32MB and 100 pages
-- 🤖 **Claude AI Integration**: Leverages Claude Opus 4.1 for intelligent document analysis
-- 🏢 **Adaptive Extraction**: Automatically detects and processes both single properties and portfolios
+- 🤖 **Claude AI Integration**: Leverages Claude Sonnet 4.5 for intelligent document analysis
+- 🏢 **Adaptive Extraction**: Two-step process automatically classifies and extracts single properties or portfolios
+- 🎯 **Guaranteed Schema Compliance**: Uses Claude's tool calling to enforce strict JSON schema adherence
 - 🔍 **Smart Validation**: Validates PDFs for encryption, size, and page count before processing
-- 📊 **Structured Output**: Returns clean JSON data with comprehensive property information
+- 📊 **Structured Output**: Returns clean, validated JSON data with comprehensive property information
 - 🔒 **Security**: Includes rate limiting, CORS support, and comprehensive error handling
 - 📝 **Development Tools**: Built-in test upload form for easy testing in development mode
 
@@ -53,6 +54,18 @@ For development with auto-reload:
 npm run dev
 ```
 
+## How It Works
+
+The extraction process uses a sophisticated two-step approach:
+
+1. **Document Classification**: Claude analyzes the PDF and determines whether it contains:
+   - **SINGLE**: One complex property (possibly with multiple uses/addresses)
+   - **PORTFOLIO**: Multiple separate properties
+
+2. **Structured Extraction**: Based on the classification, Claude uses tool calling with the appropriate JSON schema to extract data with **guaranteed schema compliance**. The tool calling mechanism ensures the output always matches the exact schema structure.
+
+This approach provides consistent, reliable data extraction across diverse property documents.
+
 ## API Documentation
 
 ### POST /api/extract-property-data
@@ -86,24 +99,24 @@ const response = await fetch('http://localhost:3000/api/extract-property-data', 
 const propertyData = await response.json();
 ```
 
-**Response for Single Property:**
+**Response for Single Property (ComplexProperty schema):**
 ```json
 {
   "property_identity": {
-    "name_id": "WILHELMIN Complex",
-    "streets": ["Wilhelminenstraße 10", "Hügelstraße 37"],
-    "postal_code": "64283",
-    "city": "Darmstadt",
+    "name_id": "Falkenblick Berlin",
+    "streets": ["Falkenseer Platz 1"],
+    "postal_code": "13589",
+    "city": "Berlin",
     "country": "Deutschland"
   },
   "property_metrics": {
-    "land_area_sqm": 3724,
-    "total_usable_area_sqm": 7297,
+    "land_area_sqm": 5200,
+    "total_usable_area_sqm": 8500,
     "breakdown_by_use": {
-      "office_sqm": 4500,
-      "retail_sqm": 1200,
+      "office_sqm": 3200,
+      "retail_sqm": 1500,
       "gastronomy_sqm": null,
-      "residential_sqm": 1597,
+      "residential_sqm": 3800,
       "parking_sqm": null,
       "other_sqm": null
     }
@@ -111,51 +124,90 @@ const propertyData = await response.json();
   "usage_details": {
     "primary_usage_type": "Mixed-Use",
     "usage_mix": ["Office", "Retail", "Residential"],
-    "overall_occupancy_percent": 92.5,
+    "overall_occupancy_percent": 95.0,
     "occupancy_by_use": {
-      "office": 95,
-      "retail": 100,
-      "residential": 85
+      "office": 98.0,
+      "retail": 100.0,
+      "residential": 92.0,
+      "gastronomy": null
     }
   },
+  "unit_counts": {
+    "residential_units": 45,
+    "microapartments": null,
+    "commercial_units": 8,
+    "parking_spaces": 60,
+    "storage_units": null
+  },
   "financial": {
-    "total_rental_income_annual_eur": 1250000,
-    "potential_rental_income_annual_eur": 1350000
+    "total_rental_income_annual_eur": 1850000,
+    "potential_rental_income_annual_eur": 1950000,
+    "market_rental_income_annual_eur": null,
+    "breakdown_by_use": {
+      "office": 750000,
+      "retail": 380000,
+      "residential": 720000,
+      "gastronomy": null,
+      "parking": null,
+      "commercial": null,
+      "storage": null
+    }
+  },
+  "project_details": {
+    "project_type": "Bestand",
+    "original_year_built": 1998,
+    "modernization_years": "2015-2018",
+    "completion_year": 2018
+  },
+  "additional_metrics": {
+    "average_apartment_size_sqm": 84,
+    "average_residential_rent_eur_sqm_month": 15.8,
+    "elevator": true,
+    "energy_efficiency_class": "B",
+    "heating_type": "Fernwärme",
+    "market_rent_eur_sqm_month": null,
+    "vacancy_rate_percent": 5.0
   }
 }
 ```
 
-**Response for Portfolio:**
+The complete schema includes all fields defined in `src/schemas/complexSchema.json`. All required fields are guaranteed to be present.
+
+**Response for Portfolio (Array of PortfolioProperty schema):**
 ```json
 [
   {
-    "name_id": "Property A",
-    "street": "Main Street 1",
-    "postal_code": "12345",
+    "name_id": "Building A - Office Tower",
+    "street": "Friedrichstraße 100",
+    "postal_code": "10117",
     "city": "Berlin",
     "country": "Deutschland",
     "land_area_sqm": 2500,
     "usable_area_sqm": 4800,
     "usage_type": "Office",
-    "occupancy_rate_percent": 95,
+    "occupancy_rate_percent": 95.0,
     "rental_income_annual_eur": 750000,
+    "project_type": "Bestand",
     "year_built": 1995
   },
   {
-    "name_id": "Property B",
-    "street": "Market Square 5",
-    "postal_code": "10115",
+    "name_id": "Building B - Retail Center",
+    "street": "Kurfürstendamm 50",
+    "postal_code": "10707",
     "city": "Berlin",
     "country": "Deutschland",
     "land_area_sqm": 1800,
     "usable_area_sqm": 3200,
     "usage_type": "Retail",
-    "occupancy_rate_percent": 100,
+    "occupancy_rate_percent": 100.0,
     "rental_income_annual_eur": 480000,
+    "project_type": null,
     "year_built": 2005
   }
 ]
 ```
+
+The complete schema for each array item is defined in `src/schemas/portfolioSchema.json`. All required fields are guaranteed to be present.
 
 ### GET /health
 
@@ -213,7 +265,7 @@ The API returns structured error responses with appropriate HTTP status codes:
 | `MAX_FILE_SIZE_MB` | Maximum PDF file size in MB | 32 |
 | `MAX_PDF_PAGES` | Maximum pages per PDF | 100 |
 | `UPLOAD_DIR` | Directory for temporary file storage | ./uploads |
-| `CLAUDE_MODEL` | Claude model to use | claude-opus-4-1-20250805 |
+| `CLAUDE_MODEL` | Claude model to use | claude-sonnet-4-5 |
 | `ENABLE_REQUEST_LOGGING` | Enable request logging | true |
 | `LOG_LEVEL` | Logging level (debug/info/warn/error) | info |
 | `ALLOWED_ORIGINS` | CORS allowed origins (comma-separated) | * |
@@ -244,9 +296,12 @@ immo-frog/
 │   │   ├── errorHandler.js  # Global error handling
 │   │   └── upload.js         # Multer configuration
 │   ├── services/
-│   │   └── claudeService.js  # Claude API integration
+│   │   └── claudeService.js  # Claude API integration with tool calling
 │   ├── routes/
 │   │   └── extraction.js     # Main API endpoints
+│   ├── schemas/
+│   │   ├── complexSchema.json    # JSON schema for single properties
+│   │   └── portfolioSchema.json  # JSON schema for portfolio properties
 │   └── utils/
 │       ├── validator.js      # Data validation
 │       └── logger.js          # Winston logger
@@ -257,10 +312,12 @@ immo-frog/
 
 ### Recommendations
 
-1. **Process Manager**: Use PM2 or similar for process management
+1. **Process Manager**: Use PM2 for process management and auto-restart
 ```bash
 npm install -g pm2
-pm2 start server.js --name "immo-frog-api"
+pm2 start server.js --name immo-frog
+pm2 save
+pm2 startup  # Follow instructions to enable auto-start on reboot
 ```
 
 2. **Reverse Proxy**: Set up Nginx as a reverse proxy
