@@ -9,6 +9,7 @@ const logger = require('./src/utils/logger');
 const errorHandler = require('./src/middleware/errorHandler');
 const extractionRoutes = require('./src/routes/extraction');
 const validatedExtractionRoutes = require('./src/routes/validatedExtraction');
+const cleanExtractionRoutes = require('./src/routes/cleanExtraction');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -37,6 +38,7 @@ if (process.env.ENABLE_REQUEST_LOGGING === 'true') {
 
 app.use('/api', extractionRoutes);
 app.use('/api', validatedExtractionRoutes);
+app.use('/api', cleanExtractionRoutes);
 
 app.get('/health', (req, res) => {
   res.json({
