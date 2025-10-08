@@ -6,7 +6,11 @@
       "Bash(mkdir:*)",
       "Bash(pm2:*)",
       "WebSearch",
-      "WebFetch(domain:www.anthropic.com)"
+      "WebFetch(domain:www.anthropic.com)",
+      "Bash(find:*)",
+      "Bash(node:*)",
+      "Bash(cat:*)",
+      "Bash(grep:*)"
     ],
     "deny": [],
     "ask": []

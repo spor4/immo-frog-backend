@@ -1,4 +1,4 @@
-const logger = require('../utils/logger');
+const logger = require('../utils/contextLogger');
 const { v4: uuidv4 } = require('uuid');
 
 const errorHandler = (err, req, res, next) => {

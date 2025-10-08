@@ -61,3 +61,5 @@ test-pdfs/
 # Cache
 .cache/
 *.cache
+
+.claude/planning

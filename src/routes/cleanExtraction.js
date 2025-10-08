@@ -6,7 +6,7 @@ const rateLimit = require('express-rate-limit');
 const { upload, handleMulterError, cleanupFile } = require('../middleware/upload');
 const validatedClaudeService = require('../services/validatedClaudeService');
 const validator = require('../utils/validator');
-const logger = require('../utils/logger');
+const logger = require('../utils/contextLogger');
 
 const router = express.Router();
 
@@ -202,6 +202,31 @@ router.post(
         'X-Model': result.metadata?.model || 'unknown',
         'X-Classification': result.metadata?.classification || 'unknown'
       });
+
+      // Calculate response size
+      const responseSizeKB = Math.round(JSON.stringify(cleanedData).length / 1024);
+
+      // Log response before sending
+      const responseLog = {
+        stage: 'response',
+        statusCode: 200,
+        dataType: Array.isArray(cleanedData) ? 'portfolio' : 'single_property',
+        itemCount: Array.isArray(cleanedData) ? cleanedData.length : 1,
+        responseSizeKB,
+        confidenceScore,
+        model: result.metadata?.model,
+        classification: result.metadata?.classification,
+        totalCost: result.metadata?.totalCost,
+        totalTokens: result.metadata?.totalTokens,
+        responseKeys: Object.keys(Array.isArray(cleanedData) ? (cleanedData[0] || {}) : cleanedData)
+      };
+
+      // Optionally log full response body (only enable for debugging)
+      if (process.env.LOG_RESPONSE_BODY === 'true') {
+        responseLog.responseBody = cleanedData;
+      }
+
+      logger.info('Sending response', responseLog);
 
       // Return ONLY the cleaned data (no validation wrapper)
       res.json(cleanedData);

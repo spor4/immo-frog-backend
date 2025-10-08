@@ -1,7 +1,15 @@
 const Anthropic = require('@anthropic-ai/sdk');
-const logger = require('../utils/logger');
+const logger = require('../utils/contextLogger');
+const { getContext } = require('../middleware/correlationContext');
 const complexSchema = require('../schemas/complexSchema.json');
 const portfolioSchema = require('../schemas/portfolioSchema.json');
+
+// Helper function to calculate API costs
+function calculateCost(usage) {
+  const inputCost = (usage.input_tokens / 1_000_000) * 3.0;  // $3/MTok
+  const outputCost = (usage.output_tokens / 1_000_000) * 15.0; // $15/MTok
+  return parseFloat((inputCost + outputCost).toFixed(4));
+}
 
 class ClaudeService {
   constructor() {
@@ -85,11 +93,18 @@ You MUST use the extract_portfolio_properties tool to return the data.`;
 
   async extractPropertyData(pdfBase64) {
     try {
-      logger.info('Starting two-step extraction process');
+      const context = getContext();
+      logger.info('Starting fast extraction process', {
+        pdfSizeKB: Math.round(pdfBase64.length / 1024)
+      });
       const startTime = Date.now();
 
       // STEP 1: Classify the document type
-      logger.info('Step 1: Classifying document type');
+      logger.info('Classification pass started', {
+        stage: 'classification',
+        pdfSizeKB: Math.round(pdfBase64.length / 1024)
+      });
+      const classifyStart = Date.now();
       const classificationResponse = await this.client.messages.create({
         model: this.model,
         max_tokens: 10,
@@ -116,14 +131,27 @@ You MUST use the extract_portfolio_properties tool to return the data.`;
       });
 
       const classificationType = this.extractTextFromResponse(classificationResponse).trim();
-      logger.info(`Document classified as: ${classificationType}`);
+
+      logger.info('Classification pass completed', {
+        stage: 'classification',
+        result: classificationType,
+        inputTokens: classificationResponse.usage.input_tokens,
+        outputTokens: classificationResponse.usage.output_tokens,
+        cost: calculateCost(classificationResponse.usage),
+        durationMs: Date.now() - classifyStart
+      });
 
       if (classificationType !== 'SINGLE' && classificationType !== 'PORTFOLIO') {
         throw new Error(`Invalid classification result: ${classificationType}`);
       }
 
       // STEP 2: Extract with the appropriate schema using TOOL CALLING
-      logger.info(`Step 2: Extracting with ${classificationType} schema using tool calling`);
+      logger.info('Extraction pass started', {
+        stage: 'extraction',
+        documentType: classificationType,
+        schema: classificationType === 'SINGLE' ? 'complex' : 'portfolio'
+      });
+      const extractStart = Date.now();
 
       const tool = classificationType === 'SINGLE' ? {
         name: "extract_complex_property",
@@ -162,16 +190,32 @@ You MUST use the extract_portfolio_properties tool to return the data.`;
         ]
       });
 
-      const processingTime = Date.now() - startTime;
-      logger.info(`Extraction completed in ${processingTime}ms`);
-
       // Extract the tool use result
       const toolUse = extractionResponse.content.find(block => block.type === 'tool_use');
       if (!toolUse || !toolUse.input) {
         throw new Error('No tool use found in Claude response');
       }
 
-      logger.info('Successfully extracted structured data via tool calling');
+      logger.info('Extraction pass completed', {
+        stage: 'extraction',
+        inputTokens: extractionResponse.usage.input_tokens,
+        outputTokens: extractionResponse.usage.output_tokens,
+        cost: calculateCost(extractionResponse.usage),
+        durationMs: Date.now() - extractStart
+      });
+
+      const totalTokens = classificationResponse.usage.input_tokens + classificationResponse.usage.output_tokens +
+                         extractionResponse.usage.input_tokens + extractionResponse.usage.output_tokens;
+      const totalCost = calculateCost(classificationResponse.usage) + calculateCost(extractionResponse.usage);
+
+      logger.info('Request completed successfully', {
+        stage: 'complete',
+        totalDurationMs: Date.now() - startTime,
+        totalCost,
+        totalTokens,
+        passesExecuted: 2
+      });
+
       return toolUse.input;
 
     } catch (error) {

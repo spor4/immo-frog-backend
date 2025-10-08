@@ -6,6 +6,7 @@ const path = require('path');
 require('dotenv').config();
 
 const logger = require('./src/utils/logger');
+const { correlationMiddleware } = require('./src/middleware/correlationContext');
 const errorHandler = require('./src/middleware/errorHandler');
 const extractionRoutes = require('./src/routes/extraction');
 const validatedExtractionRoutes = require('./src/routes/validatedExtraction');
@@ -29,6 +30,9 @@ app.use(cors(corsOptions));
 
 app.use(express.json({ limit: '35mb' }));
 app.use(express.urlencoded({ extended: true, limit: '35mb' }));
+
+// Add correlation middleware BEFORE routes to track all requests
+app.use(correlationMiddleware);
 
 if (process.env.ENABLE_REQUEST_LOGGING === 'true') {
   app.use(morgan('combined', {

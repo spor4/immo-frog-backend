@@ -1,4 +1,4 @@
-const logger = require('./logger');
+const logger = require('./contextLogger');
 
 class PropertyDataValidator {
   validatePropertyData(data) {

@@ -1,4 +1,4 @@
-const logger = require('./logger');
+const logger = require('./contextLogger');
 
 /**
  * Utility to compare extraction results from standard vs validated services

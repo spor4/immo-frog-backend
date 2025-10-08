@@ -6,7 +6,7 @@ const rateLimit = require('express-rate-limit');
 const { upload, handleMulterError, cleanupFile } = require('../middleware/upload');
 const validatedClaudeService = require('../services/validatedClaudeService');
 const validator = require('../utils/validator');
-const logger = require('../utils/logger');
+const logger = require('../utils/contextLogger');
 
 const router = express.Router();
 
@@ -102,6 +102,37 @@ router.post(
         'X-Validation-Enabled': enableValidation.toString(),
         'X-Confidence-Score': result.validation?.confidence_score?.toString() || 'N/A'
       });
+
+      // Calculate response size
+      const responseData = enableValidation ? {
+        data: result.data,
+        validation: { ...result.validation, schema_validation: validationResult },
+        metadata: { ...result.metadata, processingTime, requestId }
+      } : result.data;
+      const responseSizeKB = Math.round(JSON.stringify(responseData).length / 1024);
+
+      // Log response
+      const responseLog = {
+        stage: 'response',
+        statusCode: 200,
+        dataType: Array.isArray(result.data) ? 'portfolio' : 'single_property',
+        itemCount: Array.isArray(result.data) ? result.data.length : 1,
+        responseSizeKB,
+        includesValidation: enableValidation,
+        confidenceScore: result.validation?.confidence_score,
+        model: result.metadata?.model,
+        classification: result.metadata?.classification,
+        totalCost: result.metadata?.totalCost,
+        totalTokens: result.metadata?.totalTokens,
+        responseKeys: Object.keys(Array.isArray(result.data) ? (result.data[0] || {}) : result.data)
+      };
+
+      // Optionally log full response body (only enable for debugging)
+      if (process.env.LOG_RESPONSE_BODY === 'true') {
+        responseLog.responseBody = responseData;
+      }
+
+      logger.info('Sending response', responseLog);
 
       // Structure response based on validation mode
       if (enableValidation) {

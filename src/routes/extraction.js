@@ -8,7 +8,7 @@ const rateLimit = require('express-rate-limit');
 const { upload, handleMulterError, cleanupFile } = require('../middleware/upload');
 const claudeService = require('../services/claudeService');
 const validator = require('../utils/validator');
-const logger = require('../utils/logger');
+const logger = require('../utils/contextLogger');
 
 const router = express.Router();
 
@@ -111,6 +111,28 @@ router.post(
         'X-Request-ID': requestId,
         'X-Processing-Time': `${processingTime}ms`
       });
+
+      // Calculate response size
+      const responseJson = JSON.stringify(extractedData);
+      const responseSizeKB = Math.round(responseJson.length / 1024);
+
+      // Log response metadata (not full body to save space)
+      const responseLog = {
+        stage: 'response',
+        statusCode: 200,
+        dataType: Array.isArray(extractedData) ? 'portfolio' : 'single_property',
+        itemCount: Array.isArray(extractedData) ? extractedData.length : 1,
+        responseSizeKB,
+        // Sample of top-level keys for debugging
+        responseKeys: Object.keys(Array.isArray(extractedData) ? (extractedData[0] || {}) : extractedData)
+      };
+
+      // Optionally log full response body (only enable for debugging)
+      if (process.env.LOG_RESPONSE_BODY === 'true') {
+        responseLog.responseBody = extractedData;
+      }
+
+      logger.info('Sending response', responseLog);
 
       res.json(extractedData);
 

@@ -1,7 +1,15 @@
 const Anthropic = require('@anthropic-ai/sdk');
-const logger = require('../utils/logger');
+const logger = require('../utils/contextLogger');
+const { getContext } = require('../middleware/correlationContext');
 const complexSchema = require('../schemas/complexSchema.json');
 const portfolioSchema = require('../schemas/portfolioSchema.json');
+
+// Helper function to calculate API costs
+function calculateCost(usage) {
+  const inputCost = (usage.input_tokens / 1_000_000) * 3.0;  // $3/MTok
+  const outputCost = (usage.output_tokens / 1_000_000) * 15.0; // $15/MTok
+  return parseFloat((inputCost + outputCost).toFixed(4));
+}
 
 /**
  * Enhanced Claude Service with Three-Pass Validation Architecture
@@ -198,11 +206,19 @@ IMPORTANT: Only include data that you can verify exists in the document. When in
 
   async extractPropertyData(pdfBase64, enableValidation = true) {
     try {
-      logger.info('Starting validated extraction process', { enableValidation });
+      const context = getContext();
+      logger.info('Starting validated extraction process', {
+        enableValidation,
+        pdfSizeKB: Math.round(pdfBase64.length / 1024)
+      });
       const startTime = Date.now();
 
       // STEP 1: Classify the document type
-      logger.info('Step 1: Classifying document type');
+      logger.info('Classification pass started', {
+        stage: 'classification',
+        pdfSizeKB: Math.round(pdfBase64.length / 1024)
+      });
+      const classifyStart = Date.now();
       const classificationResponse = await this.client.messages.create({
         model: this.model,
         max_tokens: 10,
@@ -226,7 +242,15 @@ IMPORTANT: Only include data that you can verify exists in the document. When in
       });
 
       const classificationType = this.extractTextFromResponse(classificationResponse).trim();
-      logger.info(`Document classified as: ${classificationType}`);
+
+      logger.info('Classification pass completed', {
+        stage: 'classification',
+        result: classificationType,
+        inputTokens: classificationResponse.usage.input_tokens,
+        outputTokens: classificationResponse.usage.output_tokens,
+        cost: calculateCost(classificationResponse.usage),
+        durationMs: Date.now() - classifyStart
+      });
 
       if (classificationType !== 'SINGLE' && classificationType !== 'PORTFOLIO') {
         throw new Error(`Invalid classification result: ${classificationType}`);
@@ -243,7 +267,12 @@ IMPORTANT: Only include data that you can verify exists in the document. When in
       };
 
       // STEP 2: Initial extraction with source attribution
-      logger.info(`Step 2: Initial extraction with source attribution`);
+      logger.info('Extraction pass started', {
+        stage: 'extraction',
+        documentType: classificationType,
+        schema: classificationType === 'SINGLE' ? 'complex' : 'portfolio'
+      });
+      const extractStart = Date.now();
       const extractionResponse = await this.client.messages.create({
         model: this.model,
         max_tokens: 8192,
@@ -274,7 +303,15 @@ IMPORTANT: Only include data that you can verify exists in the document. When in
       }
 
       let extractedData = toolUse.input;
-      logger.info('Initial extraction completed');
+
+      logger.info('Extraction pass completed', {
+        stage: 'extraction',
+        fieldsExtracted: this.countExtractedFields(extractedData),
+        inputTokens: extractionResponse.usage.input_tokens,
+        outputTokens: extractionResponse.usage.output_tokens,
+        cost: calculateCost(extractionResponse.usage),
+        durationMs: Date.now() - extractStart
+      });
 
       if (!enableValidation) {
         logger.info('Validation disabled, returning initial extraction');
@@ -286,7 +323,10 @@ IMPORTANT: Only include data that you can verify exists in the document. When in
       }
 
       // STEP 3: Self-verification pass
-      logger.info('Step 3: Self-verification pass');
+      logger.info('Verification pass started', {
+        stage: 'verification'
+      });
+      const verifyStart = Date.now();
       const verificationResponse = await this.client.messages.create({
         model: this.model,
         max_tokens: 4096,
@@ -322,20 +362,45 @@ IMPORTANT: Only include data that you can verify exists in the document. When in
         verificationResult = { error: 'Failed to parse verification', raw: verificationText };
       }
 
-      logger.info('Verification completed', {
-        accuracy: verificationResult.verification_summary?.overall_accuracy_percent,
-        critical_issues: verificationResult.critical_issues?.length || 0
+      const verificationSummary = {
+        correct: verificationResult.verification_summary?.correct || 0,
+        incorrect: verificationResult.verification_summary?.incorrect || 0,
+        fabricated: verificationResult.verification_summary?.fabricated || 0,
+        accuracyPercent: verificationResult.verification_summary?.overall_accuracy_percent || 0
+      };
+
+      logger.info('Verification pass completed', {
+        stage: 'verification',
+        ...verificationSummary,
+        criticalIssuesCount: verificationResult.critical_issues?.length || 0,
+        inputTokens: verificationResponse.usage.input_tokens,
+        outputTokens: verificationResponse.usage.output_tokens,
+        cost: calculateCost(verificationResponse.usage),
+        durationMs: Date.now() - verifyStart
       });
+
+      if (verificationSummary.fabricated > 0) {
+        logger.warn('Hallucinations detected', {
+          stage: 'verification',
+          fabricatedCount: verificationSummary.fabricated,
+          fabricatedFields: verificationResult.fabricated_fields || []
+        });
+      }
 
       // STEP 4: Apply corrections if needed
       let finalData = extractedData;
+      let correctionResponse = null;
       const hasErrors = verificationResult.verification_summary?.incorrect > 0 ||
                        verificationResult.verification_summary?.fabricated > 0 ||
                        verificationResult.critical_issues?.length > 0;
 
       if (hasErrors) {
-        logger.info('Step 4: Applying corrections based on verification');
-        const correctionResponse = await this.client.messages.create({
+        logger.info('Correction pass started', {
+          stage: 'correction',
+          issuesCount: verificationResult.verification_summary?.incorrect + verificationResult.verification_summary?.fabricated
+        });
+        const correctStart = Date.now();
+        correctionResponse = await this.client.messages.create({
           model: this.model,
           max_tokens: 8192,
           temperature: 0,
@@ -362,7 +427,14 @@ IMPORTANT: Only include data that you can verify exists in the document. When in
         const correctionToolUse = correctionResponse.content.find(block => block.type === 'tool_use');
         if (correctionToolUse && correctionToolUse.input) {
           finalData = correctionToolUse.input;
-          logger.info('Corrections applied successfully');
+          logger.info('Correction pass completed', {
+            stage: 'correction',
+            correctionsCount: verificationResult.verification_summary?.incorrect + verificationResult.verification_summary?.fabricated,
+            inputTokens: correctionResponse.usage.input_tokens,
+            outputTokens: correctionResponse.usage.output_tokens,
+            cost: calculateCost(correctionResponse.usage),
+            durationMs: Date.now() - correctStart
+          });
         }
       }
 
@@ -370,7 +442,24 @@ IMPORTANT: Only include data that you can verify exists in the document. When in
       const calculationValidation = this.validateCalculations(finalData, classificationType);
 
       const processingTime = Date.now() - startTime;
-      logger.info(`Validated extraction completed in ${processingTime}ms`);
+
+      // Calculate total API costs
+      const totalTokens = classificationResponse.usage.input_tokens + classificationResponse.usage.output_tokens +
+                         extractionResponse.usage.input_tokens + extractionResponse.usage.output_tokens +
+                         verificationResponse.usage.input_tokens + verificationResponse.usage.output_tokens;
+      const totalCost = calculateCost(classificationResponse.usage) +
+                       calculateCost(extractionResponse.usage) +
+                       calculateCost(verificationResponse.usage);
+
+      logger.info('Request completed successfully', {
+        stage: 'complete',
+        totalDurationMs: Date.now() - context.startTime,
+        totalCost: hasErrors ? totalCost + calculateCost(correctionResponse.usage) : totalCost,
+        totalTokens: hasErrors ? totalTokens + correctionResponse.usage.input_tokens + correctionResponse.usage.output_tokens : totalTokens,
+        confidenceScore: verificationResult.confidence_score || verificationSummary.accuracyPercent,
+        correctionsApplied: hasErrors,
+        passesExecuted: hasErrors ? 4 : 3
+      });
 
       return {
         data: finalData,
@@ -385,7 +474,11 @@ IMPORTANT: Only include data that you can verify exists in the document. When in
         metadata: {
           model: this.model,
           classification: classificationType,
-          validation_passes: hasErrors ? 4 : 3
+          validation_passes: hasErrors ? 4 : 3,
+          pdfSizeKB: Math.round(pdfBase64.length / 1024),
+          totalCost: hasErrors ? totalCost + calculateCost(correctionResponse.usage) : totalCost,
+          totalTokens: hasErrors ? totalTokens + correctionResponse.usage.input_tokens + correctionResponse.usage.output_tokens : totalTokens,
+          apiCallsCount: hasErrors ? 4 : 3
         }
       };
 
@@ -587,6 +680,25 @@ IMPORTANT: Only include data that you can verify exists in the document. When in
       return false;
     }
     return process.env.ANTHROPIC_API_KEY.startsWith('sk-ant-');
+  }
+
+  countExtractedFields(data) {
+    let count = 0;
+    const countFields = (obj) => {
+      for (const key in obj) {
+        if (obj[key] !== null && obj[key] !== undefined) {
+          if (typeof obj[key] === 'object' && !Array.isArray(obj[key])) {
+            countFields(obj[key]);
+          } else if (Array.isArray(obj[key])) {
+            count += obj[key].length;
+          } else {
+            count++;
+          }
+        }
+      }
+    };
+    countFields(data);
+    return count;
   }
 }
 
