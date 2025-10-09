@@ -10,7 +10,8 @@
       "Bash(find:*)",
       "Bash(node:*)",
       "Bash(cat:*)",
-      "Bash(grep:*)"
+      "Bash(grep:*)",
+      "Bash(ssh root@159.89.111.80 \"cd ~/immo-frog && cat .env | grep LOKI\")"
     ],
     "deny": [],
     "ask": []
