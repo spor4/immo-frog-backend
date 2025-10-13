@@ -160,7 +160,13 @@ You MUST use the extract_portfolio_properties tool to return the data.`;
       } : {
         name: "extract_portfolio_properties",
         description: "Extract structured information about multiple properties from the exposé",
-        input_schema: portfolioSchema
+        input_schema: {
+          type: "object",
+          properties: {
+            properties: portfolioSchema
+          },
+          required: ["properties"]
+        }
       };
 
       const extractionResponse = await this.client.messages.create({
@@ -216,7 +222,8 @@ You MUST use the extract_portfolio_properties tool to return the data.`;
         passesExecuted: 2
       });
 
-      return toolUse.input;
+      // Unwrap portfolio data from wrapper object
+      return classificationType === 'PORTFOLIO' ? toolUse.input.properties : toolUse.input;
 
     } catch (error) {
       logger.error('Claude API error:', error);

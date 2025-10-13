@@ -263,7 +263,13 @@ IMPORTANT: Only include data that you can verify exists in the document. When in
       } : {
         name: "extract_portfolio_properties",
         description: "Extract structured information about multiple properties from the exposé",
-        input_schema: portfolioSchema
+        input_schema: {
+          type: "object",
+          properties: {
+            properties: portfolioSchema
+          },
+          required: ["properties"]
+        }
       };
 
       // STEP 2: Initial extraction with source attribution
@@ -302,7 +308,8 @@ IMPORTANT: Only include data that you can verify exists in the document. When in
         throw new Error('No tool use found in extraction response');
       }
 
-      let extractedData = toolUse.input;
+      // Unwrap portfolio data from wrapper object
+      let extractedData = classificationType === 'PORTFOLIO' ? toolUse.input.properties : toolUse.input;
 
       logger.info('Extraction pass completed', {
         stage: 'extraction',
